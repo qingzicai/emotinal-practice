@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>body{margin:0}</style>
+<title>带着情绪开工</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one calm column — "now" card on top, the evidence (predicted vs actual) below, then the log */
+:root{
+  --bg:#EDF1F0; --surface:#F9FBFA; --ink:#1C2627; --muted:#5B6968; --line:#D2DBD9;
+  --pred:#B06E24; --pred-soft:#F3E4D0; --act:#2A7770; --act-soft:#D8EBE8; --danger:#A33B32;
+  --display:"Noto Serif SC","Songti SC","STSong",serif;
+  --body:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#131A1B; --surface:#1B2425; --ink:#E3EBE9; --muted:#97A7A5; --line:#2D3A3B;
+  --pred:#E2A45A; --pred-soft:#3A2C1C; --act:#5EBDB3; --act-soft:#1D3432; --danger:#E0786E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131A1B; --surface:#1B2425; --ink:#E3EBE9; --muted:#97A7A5; --line:#2D3A3B;
+  --pred:#E2A45A; --pred-soft:#3A2C1C; --act:#5EBDB3; --act-soft:#1D3432; --danger:#E0786E; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.7}
+.wrap{max-width:720px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:28px}
+h1,h2{font-family:var(--display);text-wrap:balance;margin:0;font-weight:700}
+h1{font-size:30px;line-height:1.3}
+h2{font-size:20px}
+.lede{color:var(--muted);margin:8px 0 0;max-width:36em}
+.principle{border-left:3px solid var(--act);padding:2px 0 2px 14px;margin:14px 0 0;font-family:var(--display);font-size:17px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:20px}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted);font-weight:600}
+.field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.field>label,.field>.lab{font-weight:600}
+.hint{color:var(--muted);font-size:13px;margin-top:-4px}
+input[type=text],textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 12px;width:100%;box-sizing:border-box}
+textarea{min-height:76px;resize:vertical}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--act);outline-offset:2px}
+.thought{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.thought span{color:var(--muted);white-space:nowrap}
+.thought input{flex:1;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:4px 13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.scale{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px}
+.scale button{font-family:var(--mono);font-size:15px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:7px;padding:8px 0;cursor:pointer;font-variant-numeric:tabular-nums}
+.scale.pred button[aria-pressed="true"]{background:var(--pred);border-color:var(--pred);color:var(--surface)}
+.scale.act button[aria-pressed="true"]{background:var(--act);border-color:var(--act);color:var(--surface)}
+.scale-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.scale-now{font-size:13px;min-height:1.4em}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+.row>.field{flex:1 1 200px}
+.btn{font:inherit;font-weight:600;border:none;border-radius:10px;padding:11px 20px;cursor:pointer;background:var(--act);color:var(--surface)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.err{color:var(--danger);font-size:13px}
+.recap{background:var(--pred-soft);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.recap b{font-weight:600}
+.timer{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.timer-num{font-family:var(--mono);font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.timer-done{color:var(--act);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat .v{font-family:var(--mono);font-size:24px;font-variant-numeric:tabular-nums}
+.stat .k{font-size:12px;color:var(--muted)}
+.v.p{color:var(--pred)} .v.a{color:var(--act)}
+@media (max-width:520px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.chartbox{overflow-x:auto}
+.legend{display:flex;gap:16px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.sample-tag{font-size:12px;background:var(--pred-soft);color:var(--pred);border-radius:6px;padding:2px 8px;align-self:flex-start}
+.log{display:flex;flex-direction:column}
+.entry{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.entry:first-child{border-top:none}
+.pair{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:1px}
+.pair .p{color:var(--pred)} .pair .a{color:var(--act)} .pair .arr{color:var(--muted);margin:0 4px}
+.entry .main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.entry .t{font-weight:600;overflow-wrap:anywhere}
+.entry .m{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.entry .n{font-size:14px;overflow-wrap:anywhere}
+.linkbtn{font:inherit;font-size:13px;background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 0;text-decoration:underline;text-underline-offset:3px}
+.linkbtn.warn{color:var(--danger)}
+.pending-tag{font-size:12px;color:var(--pred);font-weight:600}
+.empty{color:var(--muted)}
+.foot{font-size:12px;color:var(--muted)}
+.sync-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.sync-top>div:first-child{min-width:0;flex:1 1 240px}
+.sync-status{font-size:14px;color:var(--muted)}
+.sync-status.ok{color:var(--act)} .sync-status.bad{color:var(--danger)}
+[hidden]{display:none!important}
+#cfgBox{display:flex;flex-direction:column;gap:14px}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>带着情绪开工</h1>
+    <p class="lede">不用等到不害怕才开始。开始前写下你预想会有多难受，做完再记下实际有多难受。记录多了，你会有一份属于自己的证据。</p>
+    <p class="principle">情绪可以跟着我，它不替我做决定。</p>
+  </header>
+
+  <section class="card" id="now" aria-live="polite"></section>
+
+  <section class="card" id="evidence"></section>
+
+  <section class="card">
+    <h2>全部记录</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="card" id="sync">
+    <div class="sync-top">
+      <div><div class="eyebrow">同步</div><div id="storeNote" class="sync-status">未连接 Google 表格，记录只保存在这台浏览器里。</div></div>
+      <div class="actions"><button class="btn ghost" id="syncNow">立即同步</button><button class="btn ghost" id="toggleCfg">设置</button></div>
+    </div>
+    <div id="cfgBox" hidden>
+      <div class="field"><label for="c-url">网页应用网址（Apps Script 部署后得到的那串链接）</label>
+        <input type="text" id="c-url" placeholder="https://script.google.com/macros/s/……/exec"></div>
+      <div class="field"><label for="c-token">口令（和脚本里 TOKEN 一致）</label>
+        <input type="text" id="c-token" autocomplete="off"></div>
+      <div class="actions"><button class="btn" id="saveCfg">保存并同步</button><button class="linkbtn" id="clearCfg">断开连接</button><span class="err" id="cfg-err"></span></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const EMOS=['焦虑','怕做不好','无从下手','抗拒','烦躁','疲惫','无聊','自责','平静','有点期待'];
+  const SCALE=[[0,'完全不难受'],[2,'有点别扭'],[4,'难受，但能忍'],[6,'很难受'],[8,'非常痛苦'],[10,'难以忍受']];
+  const OUTCOMES=['完成了第一步','做了一部分','没能开始'];
+  const HARDEST=['开头几分钟','中间某一段','一直都难','没有特别难的时刻'];
+  const LS='emotion-practice-v1';
+  const $=s=>document.querySelector(s);
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const label=n=>{let l='';for(const [k,t] of SCALE) if(n>=k) l=t; return l;};
+
+  const LS_CFG='emotion-practice-sheet', LS_DEL='emotion-practice-deleted';
+  let entries=[], cfg=loadJSON(LS_CFG,null), delQueue=loadJSON(LS_DEL,[]);
+  let syncState={busy:false,last:null,error:''};
+  let draft={task:'',step:'',minutes:25,emotions:[],thought:'',predicted:null};
+  let after={actual:null,outcome:'',hardest:'',note:''};
+  let focusId=null, nowKey=null, confirmDel=null;
+  let timer={end:0,left:0,running:false,iv:null,done:false};
+
+  function loadJSON(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+  function saveJSON(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+  function loadLocal(){return loadJSON(LS,[])}
+  function saveLocal(){saveJSON(LS,entries)}
+  function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+  const clean=e=>{const {_dirty,...r}=e;return r;};
+
+  /* ---------- Google Sheets API ---------- */
+  async function api(payload){
+    if(!payload){
+      const r=await fetch(cfg.url+'?token='+encodeURIComponent(cfg.token));
+      return r.json();
+    }
+    const r=await fetch(cfg.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({...payload,token:cfg.token})});
+    return r.json();
+  }
+  async function pushOne(e){
+    if(!cfg) return false;
+    try{const r=await api({action:'upsert',entry:clean(e)}); if(!r.ok) throw new Error(r.error); return true;}
+    catch(err){syncState.error=String(err.message||err);return false;}
+  }
+  async function sync(){
+    if(!cfg||syncState.busy) return;
+    syncState.busy=true; syncState.error=''; note();
+    try{
+      for(const id of [...delQueue]){
+        const r=await api({action:'delete',id}); if(!r.ok) throw new Error(r.error);
+        delQueue=delQueue.filter(x=>x!==id); saveJSON(LS_DEL,delQueue);
+      }
+      for(const e of entries.filter(x=>x._dirty)){
+        if(await pushOne(e)) e._dirty=false; else throw new Error(syncState.error);
+      }
+      const r=await api(); if(!r.ok) throw new Error(r.error);
+      const remote=r.entries.filter(x=>!delQueue.includes(x.id));
+      const localDirty=entries.filter(x=>x._dirty);
+      entries=[...remote.filter(x=>!localDirty.some(l=>l.id===x.id)),...localDirty];
+      saveLocal(); syncState.last=Date.now();
+    }catch(err){ syncState.error=String(err.message||err)||'连接失败'; }
+    syncState.busy=false; note();
+    if(nowKey==='__new__'){renderEvidence();renderLog();} else renderAll(false);
+  }
+
+  async function persist(e){
+    e._dirty=true;
+    const i=entries.findIndex(x=>x.id===e.id);
+    if(i>=0) entries[i]=e; else entries.push(e);
+    saveLocal(); renderAll();
+    if(cfg && await pushOne(e)){ e._dirty=false; saveLocal(); syncState.last=Date.now(); syncState.error=''; }
+    note();
+  }
+  async function removeEntry(id){
+    entries=entries.filter(x=>x.id!==id); saveLocal();
+    if(cfg){ delQueue.push(id); saveJSON(LS_DEL,delQueue); renderAll(); sync(); }
+    else renderAll();
+  }
+  function note(){
+    const el=$('#storeNote'); if(!el) return;
+    const dirty=entries.filter(x=>x._dirty).length;
+    if(!cfg){ el.textContent='未连接 Google 表格，记录只保存在这台浏览器里。'; el.className='sync-status'; return; }
+    if(syncState.busy){ el.textContent='正在同步……'; el.className='sync-status'; return; }
+    if(syncState.error){ el.textContent=`同步失败：${syncState.error}。${dirty?`有 ${dirty} 条记录暂存在本机，`:''}稍后点「立即同步」重试。`; el.className='sync-status bad'; return; }
+    el.textContent = syncState.last
+      ? `已连接 Google 表格 · 上次同步 ${fmtDate(syncState.last)}${dirty?` · ${dirty} 条待上传`:''}`
+      : '已连接 Google 表格。';
+    el.className='sync-status ok';
+  }
+
+  const sorted=()=>[...entries].sort((a,b)=>a.createdAt-b.createdAt);
+  const pendings=()=>sorted().filter(e=>e.status==='pending');
+  const dones=()=>sorted().filter(e=>e.status==='done');
+  function current(){
+    if(focusId){const f=entries.find(e=>e.id===focusId&&e.status==='pending'); if(f) return f;}
+    const p=pendings(); return p.length?p[p.length-1]:null;
+  }
+
+  function scaleHTML(kind,val){
+    let b='';for(let i=0;i<=10;i++) b+=`<button type="button" data-score="${i}" data-kind="${kind}" aria-pressed="${val===i}" aria-label="${i} 分">${i}</button>`;
+    return `<div class="scale ${kind==='predicted'?'pred':'act'}" role="group">${b}</div>
+      <div class="scale-ends"><span>0 完全不难受</span><span>10 难以忍受</span></div>
+      <div class="scale-now" id="now-${kind}">${val==null?'':esc(val+' 分 · '+label(val))}</div>`;
+  }
+
+  /* ---------- NOW card ---------- */
+  function renderNow(force){
+    const c=current(); const key=c?c.id:'new';
+    if(!force && key===nowKey) return;
+    if(key!==nowKey){ after={actual:null,outcome:'',hardest:'',note:''}; }
+    nowKey=key;
+    const el=$('#now');
+    if(!c){
+      el.innerHTML=`
+        <div><div class="eyebrow">开始之前 · 两分钟</div><h2 style="margin-top:4px">写下来，然后开始</h2></div>
+        <div class="field"><label for="f-task">要做的事</label>
+          <input type="text" id="f-task" placeholder="例如：修改论文，处理审稿意见第 2、5 条" value="${esc(draft.task)}"></div>
+        <div class="row">
+          <div class="field"><label for="f-step">第一个具体动作</label>
+            <input type="text" id="f-step" placeholder="例如：打开文档，读一遍第 2 条意见" value="${esc(draft.step)}"></div>
+          <div class="field" style="flex:0 1 150px"><label for="f-min">这次只做</label>
+            <select id="f-min">${[10,15,25,45,60,90].map(m=>`<option value="${m}"${draft.minutes===m?' selected':''}>${m} 分钟</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><span class="lab">现在有什么情绪？</span><div class="hint">可多选。不需要改变它们，只是看见。</div>
+          <div class="chips">${EMOS.map(e=>`<button type="button" class="chip" data-emo="${e}" aria-pressed="${draft.emotions.includes(e)}">${e}</button>`).join('')}</div></div>
+        <div class="field"><label for="f-thought">脑子里在说什么？</label>
+          <div class="thought"><span>我注意到我有一个想法：</span><input type="text" id="f-thought" placeholder="这会很痛苦，我写不好" value="${esc(draft.thought)}"></div></div>
+        <div class="field"><span class="lab">预测：接下来这段时间会有多难受？</span>${scaleHTML('predicted',draft.predicted)}</div>
+        <div class="actions"><button class="btn" id="go">带着它开始</button><span class="err" id="go-err"></span></div>`;
+    } else {
+      const mins=c.minutes||25;
+      if(!timer.running && !timer.done && timer.forId!==c.id){ timer.left=mins*60; timer.forId=c.id; }
+      el.innerHTML=`
+        <div><div class="eyebrow">进行中 · ${esc(fmtDate(c.createdAt))}</div><h2 style="margin-top:4px">${esc(c.task)}</h2></div>
+        <div class="recap">
+          ${c.step?`<div><b>第一步：</b>${esc(c.step)}</div>`:''}
+          ${c.thought?`<div><b>那个想法：</b>「${esc(c.thought)}」</div>`:''}
+          <div><b>预测难受程度：</b><span style="font-family:var(--mono)">${c.predicted}</span> 分${c.emotions?.length?` · ${esc(c.emotions.join('、'))}`:''}</div>
+        </div>
+        <div class="timer"><div class="timer-num" id="tnum">${fmtT(timer.left)}</div>
+          <div class="actions"><button class="btn ghost" id="tbtn">${timer.running?'暂停':'开始计时'}</button>
+          <span class="timer-done" id="tdone">${timer.done?'时间到，可以停了。':''}</span></div></div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:0">
+        <div><div class="eyebrow">做完之后</div><h2 style="margin-top:4px">实际怎么样？</h2></div>
+        <div class="field"><span class="lab">实际：这段时间有多难受？</span>${scaleHTML('actual',after.actual)}</div>
+        <div class="row">
+          <div class="field"><label for="f-out">做到了哪里</label><select id="f-out"><option value="">请选择</option>${OUTCOMES.map(o=>`<option${after.outcome===o?' selected':''}>${o}</option>`).join('')}</select></div>
+          <div class="field"><label for="f-hard">最难受的是</label><select id="f-hard"><option value="">请选择</option>${HARDEST.map(o=>`<option${after.hardest===o?' selected':''}>${o}</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><label for="f-note">和预想比，哪里不一样？</label>
+          <textarea id="f-note" placeholder="例如：开头五分钟最难，写起来之后没那么糟">${esc(after.note)}</textarea></div>
+        <div class="actions"><button class="btn" id="finish">记下结果</button>
+          <button class="linkbtn" id="later">稍后再填</button><span class="err" id="fin-err"></span></div>`;
+    }
+  }
+
+  /* ---------- Evidence ---------- */
+  function renderEvidence(){
+    const d=dones(); const sample=d.length===0;
+    const data=sample?[
+      {predicted:8,actual:4,task:'示例：修改论文引言'},{predicted:7,actual:5,task:'示例：回复审稿意见'},
+      {predicted:9,actual:3,task:'示例：写方法部分'},{predicted:6,actual:4,task:'示例：整理参考文献'}]:d.slice(-14);
+    const all=sample?data:d;
+    const avg=k=>all.reduce((s,e)=>s+e[k],0)/all.length;
+    const lower=all.filter(e=>e.actual<e.predicted).length;
+    const ap=avg('predicted'),aa=avg('actual');
+    $('#evidence').innerHTML=`
+      <div><div class="eyebrow">你的证据</div><h2 style="margin-top:4px">预测 vs 实际</h2></div>
+      ${sample?'<span class="sample-tag">示例数据 · 完成第一次记录后显示你自己的</span>':''}
+      <div class="stats">
+        <div class="stat"><span class="v">${all.length}</span><span class="k">完成次数</span></div>
+        <div class="stat"><span class="v p">${ap.toFixed(1)}</span><span class="k">平均预测</span></div>
+        <div class="stat"><span class="v a">${aa.toFixed(1)}</span><span class="k">平均实际</span></div>
+        <div class="stat"><span class="v">${lower}/${all.length}</span><span class="k">实际比预测轻</span></div>
+      </div>
+      <div class="legend"><span><i style="background:var(--pred)"></i>开始前的预测</span><span><i style="background:var(--act)"></i>做完后的实际</span></div>
+      <div class="chartbox">${chart(data)}</div>
+      ${sample?'':evidenceLines(d)}`;
+  }
+  function chart(data){
+    const n=data.length, step=44, L=34, R=18, T=12, B=26;
+    const W=Math.max(320,L+R+step*n), H=210, ih=H-T-B;
+    const y=v=>T+ih-(v/10)*ih;
+    const x=i=>L+step*i+step/2;
+    let g='';
+    for(const v of [0,5,10]){g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/>
+      <text x="${L-8}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">${v}</text>`;}
+    data.forEach((e,i)=>{
+      const cx=x(i);
+      g+=`<line x1="${cx}" x2="${cx}" y1="${y(e.predicted)}" y2="${y(e.actual)}" stroke="var(--muted)" stroke-opacity=".45" stroke-width="2"/>
+        <circle cx="${cx}" cy="${y(e.predicted)}" r="6" fill="var(--pred)"><title>${esc(e.task)}：预测 ${e.predicted}</title></circle>
+        <circle cx="${cx}" cy="${y(e.actual)}" r="6" fill="var(--act)"><title>${esc(e.task)}：实际 ${e.actual}</title></circle>
+        <text x="${cx}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">${i+1}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none;display:block" role="img" aria-label="每次练习的预测与实际难受程度">${g}</svg>`;
+  }
+  function evidenceLines(d){
+    const best=[...d].filter(e=>e.actual<e.predicted).sort((a,b)=>(b.predicted-b.actual)-(a.predicted-a.actual)).slice(0,3);
+    if(!best.length) return '<p class="empty" style="margin:0">还没有"实际比预测轻"的记录。继续记，数据会自己说话；就算实际和预测一样，你也还是做了。</p>';
+    return `<div class="field"><span class="lab">下次害怕的时候，读这几条</span>
+      ${best.map(e=>`<div class="n"><span class="pair"><span class="p">${e.predicted}</span><span class="arr">→</span><span class="a">${e.actual}</span></span>　${esc(e.task)}${e.note?`<br><span class="m" style="color:var(--muted)">「${esc(e.note)}」</span>`:''}</div>`).join('')}</div>`;
+  }
+
+  /* ---------- Log ---------- */
+  function renderLog(){
+    const list=sorted().reverse();
+    if(!list.length){$('#log').innerHTML='<p class="empty" style="margin:0">还没有记录。从上面写下第一件事开始。</p>';return;}
+    $('#log').innerHTML=list.map(e=>`
+      <div class="entry">
+        <div class="pair">${e.status==='done'
+          ?`<span class="p">${e.predicted}</span><span class="arr">→</span><span class="a">${e.actual}</span>`
+          :`<span class="p">${e.predicted}</span><span class="arr">→</span><span class="pending-tag">?</span>`}</div>
+        <div class="main">
+          <span class="t">${esc(e.task)}</span>
+          <span class="m">${esc(fmtDate(e.createdAt))} · ${e.minutes||25} 分钟${e.emotions?.length?' · '+esc(e.emotions.join('、')):''}${e.status==='done'&&e.outcome?' · '+esc(e.outcome):''}${e.status==='done'&&e.hardest?' · 最难：'+esc(e.hardest):''}</span>
+          ${e.thought?`<span class="m">想法：「${esc(e.thought)}」</span>`:''}
+          ${e.note?`<span class="n">${esc(e.note)}</span>`:''}
+          ${e.status==='pending'?`<span><button class="linkbtn" data-fill="${e.id}">补填事后评分</button></span>`:''}
+        </div>
+        <div>${confirmDel===e.id
+          ?`<button class="linkbtn warn" data-del="${e.id}">确认删除</button>`
+          :`<button class="linkbtn" data-ask="${e.id}">删除</button>`}</div>
+      </div>`).join('');
+  }
+
+  function renderAll(force){renderNow(force);renderEvidence();renderLog();}
+
+  /* ---------- helpers ---------- */
+  function fmtT(s){s=Math.max(0,Math.round(s));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+  function fmtDate(t){const d=new Date(t);return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
+  function tick(){
+    timer.left=(timer.end-Date.now())/1000;
+    if(timer.left<=0){timer.left=0;timer.running=false;timer.done=true;clearInterval(timer.iv);
+      const d=$('#tdone'); if(d) d.textContent='时间到，可以停了。'; const b=$('#tbtn'); if(b) b.textContent='开始计时';}
+    const n=$('#tnum'); if(n) n.textContent=fmtT(timer.left);
+  }
+  function startTimer(){ if(timer.left<=0) return; timer.end=Date.now()+timer.left*1000; timer.running=true; timer.done=false;
+    clearInterval(timer.iv); timer.iv=setInterval(tick,500); }
+  function pauseTimer(){ timer.running=false; clearInterval(timer.iv); tick(); }
+
+  /* ---------- events ---------- */
+  document.addEventListener('click',async ev=>{
+    const t=ev.target.closest('button'); if(!t) return;
+    if(t.dataset.score!=null){
+      const v=+t.dataset.score, k=t.dataset.kind;
+      if(k==='predicted') draft.predicted=v; else after.actual=v;
+      t.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));
+      const n=$('#now-'+k); if(n) n.textContent=v+' 分 · '+label(v);
+      return;
+    }
+    if(t.dataset.emo){
+      const e=t.dataset.emo; const on=!draft.emotions.includes(e);
+      draft.emotions=on?[...draft.emotions,e]:draft.emotions.filter(x=>x!==e);
+      t.setAttribute('aria-pressed',on); return;
+    }
+    if(t.id==='go'){
+      if(!draft.task.trim()){$('#go-err').textContent='先写下要做的事。';return;}
+      if(draft.predicted==null){$('#go-err').textContent='选一个预测分数，凭直觉就好。';return;}
+      const e={id:newId(),status:'pending',createdAt:Date.now(),task:draft.task.trim(),step:draft.step.trim(),
+        minutes:draft.minutes,emotions:draft.emotions,thought:draft.thought.trim(),predicted:draft.predicted};
+      draft={task:'',step:'',minutes:25,emotions:[],thought:'',predicted:null};
+      focusId=e.id; timer={end:0,left:e.minutes*60,running:false,done:false,iv:null,forId:e.id};
+      await persist(e); startTimer(); renderNow(true); return;
+    }
+    if(t.id==='tbtn'){ timer.running?pauseTimer():startTimer(); t.textContent=timer.running?'暂停':'开始计时'; return; }
+    if(t.id==='finish'){
+      const c=current(); if(!c) return;
+      if(after.actual==null){$('#fin-err').textContent='选一个实际分数。';return;}
+      pauseTimer(); timer={end:0,left:0,running:false,done:false,iv:null,forId:null};
+      const e={...c,status:'done',actual:after.actual,outcome:after.outcome,hardest:after.hardest,note:after.note.trim(),doneAt:Date.now()};
+      focusId=null; await persist(e); nowKey=null; renderAll(true);
+      $('#evidence').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+      return;
+    }
+    if(t.id==='later'){ /* keep pending, go back to new form */ pauseTimer();
+      focusId='__none__'; nowKey=null; renderNowNew(); return; }
+    if(t.dataset.fill){ focusId=t.dataset.fill; pauseTimer(); timer={end:0,left:0,running:false,done:false,iv:null,forId:null};
+      const c=entries.find(x=>x.id===focusId); if(c){timer.left=(c.minutes||25)*60; timer.forId=c.id;}
+      nowKey=null; renderNow(true); $('#now').scrollIntoView({block:'start'}); return; }
+    if(t.dataset.ask){ confirmDel=t.dataset.ask; renderLog(); return; }
+    if(t.dataset.del){ const id=t.dataset.del; confirmDel=null; if(focusId===id) focusId=null; await removeEntry(id); return; }
+  });
+  function renderNowNew(){ // show a fresh form even when something is pending
+    const saved=current; current=()=>null; renderNow(true); current=saved; nowKey='__new__';
+  }
+  document.addEventListener('input',ev=>{
+    const id=ev.target.id;
+    if(id==='f-task') draft.task=ev.target.value;
+    else if(id==='f-step') draft.step=ev.target.value;
+    else if(id==='f-thought') draft.thought=ev.target.value;
+    else if(id==='f-note') after.note=ev.target.value;
+  });
+  document.addEventListener('change',ev=>{
+    const id=ev.target.id;
+    if(id==='f-min') draft.minutes=+ev.target.value;
+    else if(id==='f-out') after.outcome=ev.target.value;
+    else if(id==='f-hard') after.hardest=ev.target.value;
+  });
+
+  /* ---------- boot ---------- */
+  document.addEventListener('click',async ev=>{
+    const t=ev.target.closest('button'); if(!t) return;
+    if(t.id==='toggleCfg'){
+      const box=$('#cfgBox'); box.hidden=!box.hidden;
+      if(!box.hidden){ $('#c-url').value=cfg?.url||''; $('#c-token').value=cfg?.token||''; $('#cfg-err').textContent=''; }
+    }
+    if(t.id==='syncNow'){ if(!cfg){ $('#cfgBox').hidden=false; $('#cfg-err').textContent='先填写网址和口令。'; return; } sync(); }
+    if(t.id==='saveCfg'){
+      const url=$('#c-url').value.trim(), token=$('#c-token').value.trim();
+      if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)){ $('#cfg-err').textContent='网址应以 https://script.google.com/ 开头，结尾是 /exec。'; return; }
+      if(!token){ $('#cfg-err').textContent='请填写口令。'; return; }
+      cfg={url,token}; saveJSON(LS_CFG,cfg);
+      entries.forEach(e=>e._dirty=true); saveLocal();   // 把本机已有记录一并上传
+      $('#cfgBox').hidden=true; await sync();
+      if(syncState.error){ $('#cfgBox').hidden=false; $('#cfg-err').textContent='连接没成功，请检查网址、口令，以及部署时「谁可以访问」是否选了「任何人」。'; }
+    }
+    if(t.id==='clearCfg'){ cfg=null; try{localStorage.removeItem(LS_CFG)}catch(e){} syncState={busy:false,last:null,error:''}; $('#cfgBox').hidden=true; note(); }
+  });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sync(); });
+
+  entries=loadLocal(); renderAll(true); note();
+  if(cfg) sync();
+})();
+</script>
+
+</html>
